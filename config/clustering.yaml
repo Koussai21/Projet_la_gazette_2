@@ -12,12 +12,12 @@ embeddings:
 
 regroupement:
   algorithme: hdbscan       # trouve seul le nombre de thèmes et laisse les articles isolés en bruit
-  min_cluster_size: 3       # un thème = au moins 3 articles
+  min_cluster_size: 5       # un thème = au moins 3 articles
   min_samples: 1           # densité minimale autour d'un article pour qu'il ancre un thème
   cluster_selection_method: leaf   # « eom » faisait un seul thème de 47 articles sur les manifestations
   # Les vecteurs sont normalisés : la distance euclidienne suit alors la distance cosinus
   pca_composantes: 15
-  cluster_selection_epsilon: 0.25
+  cluster_selection_epsilon: 0.45
 
 nommage:
   mots_cles: 8              # mots-clés gardés par thème (TF-IDF par thème, le bruit sert de fond)
