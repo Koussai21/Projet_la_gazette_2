@@ -8,12 +8,10 @@ from pathlib import Path
 
 import psycopg
 
-from gazette import controles, nettoyage, rapport, regles, retention, themes
+from gazette import controles, db, nettoyage, rapport, registre, regles, retention, themes
 from gazette.config import Config
-from gazette.embeddings import EncodeurFastembed
 from gazette.sources import load_sources
 
-from gazette import registre
 
 def nettoyer(conn: psycopg.Connection, cfg: Config) -> nettoyage.BilanNettoyage:
     return nettoyage.nettoyer(conn, cfg.articles_dir, regles.charger(cfg.regles_file))

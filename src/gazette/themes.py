@@ -21,14 +21,12 @@ import numpy as np
 import psycopg
 import yaml
 from psycopg.types.json import Jsonb
-
 from sklearn.cluster import HDBSCAN
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import silhouette_score
 
 from gazette import db
 from gazette.embeddings import Encodeur, texte, vectoriser
-
 from gazette.evaluation import charger_config_eval, evaluer_run, runs_precedents
 
 log = logging.getLogger("gazette.themes")
@@ -193,19 +191,9 @@ def executer(
     code_version: str = "inconnue",
     racine: str | Path = ".",
     version_modele: str = "inconnue",
-    eval_config_path: str | Path = "config/evaluation.yaml"
+    eval_config_path: str | Path = "config/evaluation.yaml",
+    mode_candidat: bool = False,
 ) -> Run:
-
-    run.metriques = metriques(vecteurs, etiquettes) | {
-            "embeddings_calcules": calcules,
-            "duree_s": round(time.monotonic() - t0, 2),
-        }
-    cfg_eval = charger_config_eval(Path(racine) / eval_config_path)
-    hist = runs_precedents(conn, limite=cfg_eval["derive"]["fenetre_historique_runs"])
-    eval_res = evaluer_run(run.metriques, cfg_eval, hist)
-    run.verdict = eval_res.verdict
-    run.raisons_verdict = eval_res.raisons
-    
     db.migrate(conn)
     debut = datetime.now(UTC)
     fin = fin or debut.replace(microsecond=0)
@@ -232,10 +220,17 @@ def executer(
         mots_vides = _mots_vides(Path(racine) / cfg["nommage"]["mots_vides"])
         textes = [texte(a) for a in articles]
         mots_cles = nommer(textes, etiquettes, mots_vides, cfg["nommage"])
+
         run.metriques = metriques(vecteurs, etiquettes) | {
             "embeddings_calcules": calcules,
             "duree_s": round(time.monotonic() - t0, 2),
         }
+        cfg_eval = charger_config_eval(Path(racine) / eval_config_path)
+        hist = runs_precedents(conn, limite=cfg_eval["derive"]["fenetre_historique_runs"])
+        eval_res = evaluer_run(run.metriques, cfg_eval, hist)
+        run.verdict = eval_res.verdict
+        run.raisons_verdict = eval_res.raisons
+
         run.themes = [
             {
                 "numero": n,
@@ -270,12 +265,20 @@ def executer(
         )
         raise
     log.info(
-        "run %s : %d articles, %d thèmes, %.0f %% de bruit",
+        "run %s : %d articles, %d thèmes, %.0f %% de bruit (verdict=%s)",
         run.run_id,
         run.nb_articles,
         run.metriques["nb_themes"],
         100 * run.metriques["part_bruit"],
-        extra={"champs": {"evenement": "run_themes", "run_id": run.run_id, **run.metriques}},
+        run.verdict,
+        extra={
+            "champs": {
+                "evenement": "run_themes",
+                "run_id": run.run_id,
+                "verdict": run.verdict,
+                **run.metriques,
+            }
+        },
     )
     return run
 
