@@ -88,7 +88,11 @@ def empreinte_entree(articles: list[dict]) -> str:
 def regrouper(vecteurs: np.ndarray, params: dict) -> tuple[np.ndarray, np.ndarray]:
     """Les étiquettes (-1 = bruit) et la force du rattachement de chaque article."""
     n = len(vecteurs)
-    if n < max(params["min_cluster_size"], params["min_samples"] + 1, 2):
+    min_cluster_size = params["min_cluster_size"]
+    if n <= 20:
+        min_cluster_size = min(min_cluster_size, 3)
+
+    if n < max(min_cluster_size, params["min_samples"] + 1, 2):
         return np.full(n, -1), np.zeros(n)
 
     donnees = vecteurs
@@ -99,11 +103,12 @@ def regrouper(vecteurs: np.ndarray, params: dict) -> tuple[np.ndarray, np.ndarra
     normes = np.linalg.norm(donnees, axis=1, keepdims=True)
     unitaires = donnees / np.where(normes == 0, 1, normes)  # euclidien ≈ cosinus
 
+    epsilon = float(params.get("cluster_selection_epsilon", 0.0)) if n > 20 else 0.0
     modele = HDBSCAN(
-        min_cluster_size=params["min_cluster_size"],
+        min_cluster_size=min_cluster_size,
         min_samples=params["min_samples"],
         cluster_selection_method=params["cluster_selection_method"],
-        cluster_selection_epsilon=float(params.get("cluster_selection_epsilon", 0.0)),
+        cluster_selection_epsilon=epsilon,
         copy=True,
     ).fit(unitaires)
     return _renumeroter(modele.labels_), modele.probabilities_
