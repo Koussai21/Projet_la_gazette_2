@@ -22,9 +22,9 @@ import psycopg
 import yaml
 from psycopg.types.json import Jsonb
 from sklearn.cluster import HDBSCAN
+from sklearn.decomposition import PCA
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import silhouette_score
-from sklearn.decomposition import PCA
 
 from gazette import db
 from gazette.embeddings import Encodeur, texte, vectoriser
