@@ -301,27 +301,48 @@ def _ecrire_artefacts(dossier: Path, cfg: ConfigThemes, run: Run, affectations: 
     return {nom.split(".")[0]: str(dossier / nom) for nom in fichiers}
 
 
-def _enregistrer(conn, run: Run, articles, etiquettes, probabilites) -> None:
+def _enregistrer(
+    conn,
+    run: Run,
+    articles,
+    etiquettes,
+    probabilites,
+    *,
+    version_modele: str = "inconnue",
+    ecrire_themes: bool = True,
+) -> None:
     with conn.transaction():
-        ids_themes = {}
-        for t in run.themes:
-            (ids_themes[t["numero"]],) = conn.execute(
-                "INSERT INTO themes (run_id, numero, nom, mots_cles, taille)"
-                " VALUES (%s, %s, %s, %s, %s) RETURNING theme_id",
-                (run.run_id, t["numero"], t["nom"], t["mots_cles"], t["taille"]),
-            ).fetchone()
-        with conn.cursor() as cur:
-            cur.executemany(
-                "INSERT INTO articles_themes (run_id, item_id, theme_id, probabilite)"
-                " VALUES (%s, %s, %s, %s)",
-                [
-                    (run.run_id, a["item_id"], ids_themes[int(e)], round(float(p), 4))
-                    for a, e, p in zip(articles, etiquettes, probabilites, strict=True)
-                    if e >= 0
-                ],
-            )
+        if ecrire_themes:
+            ids_themes = {}
+            for t in run.themes:
+                (ids_themes[t["numero"]],) = conn.execute(
+                    "INSERT INTO themes (run_id, numero, nom, mots_cles, taille)"
+                    " VALUES (%s, %s, %s, %s, %s) RETURNING theme_id",
+                    (run.run_id, t["numero"], t["nom"], t["mots_cles"], t["taille"]),
+                ).fetchone()
+            with conn.cursor() as cur:
+                cur.executemany(
+                    "INSERT INTO articles_themes (run_id, item_id, theme_id, probabilite)"
+                    " VALUES (%s, %s, %s, %s)",
+                    [
+                        (run.run_id, a["item_id"], ids_themes[int(e)], round(float(p), 4))
+                        for a, e, p in zip(articles, etiquettes, probabilites, strict=True)
+                        if e >= 0
+                    ],
+                )
+        statut_final = "recale" if (run.verdict == "recale" or not ecrire_themes) else "ok"
         conn.execute(
-            "UPDATE runs SET statut = 'ok', duree_s = %s, metriques = %s, artefacts = %s"
+            "UPDATE runs SET statut = %s, duree_s = %s, metriques = %s, artefacts = %s,"
+            " version_modele = %s, verdict = %s, raisons_verdict = %s"
             " WHERE run_id = %s",
-            (run.metriques["duree_s"], Jsonb(run.metriques), Jsonb(run.artefacts), run.run_id),
+            (
+                statut_final,
+                run.metriques["duree_s"],
+                Jsonb(run.metriques),
+                Jsonb(run.artefacts),
+                version_modele,
+                run.verdict,
+                run.raisons_verdict,
+                run.run_id,
+            ),
         )
