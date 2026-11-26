@@ -2,7 +2,7 @@
 
 1. **Outil** : GitHub Actions ([.github/workflows/ci.yml](../.github/workflows/ci.yml)), lancé à chaque push sur `main` et sur chaque pull request.
 2. **Étapes**, chacune bloquante pour la suivante : lint (ruff) → tests (pytest, sans accès à Internet : flux enregistrés, serveur HTTP local et vraie base PostgreSQL) → build de l'image Docker.
-3. **Publication** : seulement depuis `main`, sur `ghcr.io/ethannoe/projet_la_gazette`.
+3. **Publication** : seulement depuis `main`, sur `ghcr.io/koussai21/projet_la_gazette_2`.
 4. **Tag** : `AAAAMMJJHHMMSS-sha` (heure UTC du build et 7 premiers caractères du commit). On sait quand l'image a été construite et à partir de quel code. Pas de `latest`.
 5. **Pull request** : l'image est construite mais pas publiée, pour vérifier le Dockerfile avant le merge.
 6. **Protection de `main`** : merge uniquement par PR, avec une CI verte et une relecture (voir [CONTRIBUTING.md](../CONTRIBUTING.md)).

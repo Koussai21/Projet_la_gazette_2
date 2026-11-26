@@ -1,38 +1,27 @@
 # La gazette
 
-[![CI](https://github.com/ethannoe/Projet_la_gazette/actions/workflows/ci.yml/badge.svg)](https://github.com/ethannoe/Projet_la_gazette/actions/workflows/ci.yml)
+[![CI](https://github.com/Koussai21/Projet_la_gazette_2/actions/workflows/ci.yml/badge.svg)](https://github.com/Koussai21/Projet_la_gazette_2/actions/workflows/ci.yml)
 
 Chaque matin à 7 h, une édition qui montre de quoi parle la presse française : les thèmes du jour,
 les journaux qui les traitent et les liens pour lire la suite. On ne résume pas les articles, on les
-regroupe par thèmes. Le besoin, le périmètre et la stack sont décrits dans
-[docs/cadrage.md](docs/cadrage.md).
+regroupe par thèmes. Le besoin, le périmètre et la stack : [docs/cadrage.md](docs/cadrage.md).
 
-Où on en est (TD 5), toutes les 30 min :
-- **collecte** : les flux RSS de [sources.csv](sources.csv) sont lus, et chaque nouvel article est
-  écrit une seule fois dans `articles_bruts/` ;
-- **nettoyage** : chaque article est normalisé et passe des règles d'exclusion (publi,
-  horoscope, programme TV, doublons…), puis va dans la table `articles_propres` ou dans `rejets`,
-  avec la règle qui l'a écarté ;
-- **contrôles** : des contrôles de qualité vérifient les vraies données, et alertent l'équipe si un
-  fait est faux ;
-- **rapport** : un rapport de qualité dit, chaque jour, ce qui a été rejeté, par règle et par
-  source (`rapports/qualite-AAAA-MM-JJ.md`) ;
-- **thèmes** (une fois par jour, après 6 h 30) : les articles propres des dernières 24 h sont
-  vectorisés, regroupés (HDBSCAN) et nommés par leurs mots-clés. Chaque run est tracé
-  (données, paramètres, métriques, artefacts) : voir [docs/mlops.md](docs/mlops.md).
-
-## Lancer le projet
+## Démarrage rapide
 
 Prérequis : [Docker](https://docs.docker.com/get-docker/) avec Compose v2, et git. Sous Windows,
-passer par WSL.
+passer par WSL. Rien d'autre à installer : Python, PostgreSQL et Prefect tournent dans des conteneurs.
 
 ```bash
-git clone https://github.com/ethannoe/Projet_la_gazette.git && cd Projet_la_gazette
-bin/dev
+git clone https://github.com/Koussai21/Projet_la_gazette_2.git && cd Projet_la_gazette_2
+bin/dev                       # ou : bin/dev --source liberation  (premier passage sur une seule source)
 ```
 
-`bin/dev` démarre PostgreSQL, le serveur Prefect et la collecte planifiée, fait un premier passage
-tout de suite, puis affiche l'état des sources :
+`bin/dev` :
+
+1. construit l'image et démarre PostgreSQL, le serveur Prefect et le pipeline planifié ;
+2. fait tout de suite un premier passage : collecte → nettoyage → contrôles → thèmes
+   (le premier run télécharge le modèle d'embeddings dans `modeles/`, ça prend un moment) ;
+3. affiche l'état des sources :
 
 ```
 source        état     dernière réussite     échecs  passages        sommeils  articles
@@ -43,24 +32,78 @@ lesechos      retirée  jamais                3       3 (3 en échec)  1        
 - lesechos : HTTP 403
 ```
 
-Une source `SOMMEIL` a échoué 3 fois de suite et n'est plus interrogée ; une source
-`retirée` n'est plus dans `sources.csv` mais garde son historique.
+Une source `SOMMEIL` a échoué 3 fois de suite et n'est plus interrogée ; une source `retirée`
+n'est plus dans `sources.csv` mais garde son historique.
 
-- Les articles bruts sont dans `articles_bruts/<source>/<id>.json`, les articles propres dans la
-  table `articles_propres` (contrat et champs : [docs/donnees.md](docs/donnees.md)).
-- Le rapport de qualité du jour : `rapports/qualite-AAAA-MM-JJ.md` (comment le lire :
-  [docs/qualite.md](docs/qualite.md)).
-- Les thèmes du jour : `docker compose run --rm collecteur themes-du-jour` ; les runs :
-  `docker compose run --rm collecteur runs`.
-- Pour brancher l'alerte sur le Discord ou le Slack de l'équipe, mettre
-  `GAZETTE_ALERTE_WEBHOOK=…` dans un fichier `.env` (voir [docs/orchestration.md](docs/orchestration.md)).
-- L'interface Prefect, avec l'historique des passages, est sur http://localhost:4200.
-- Les journaux, une ligne JSON par source et par passage :
-  `docker compose logs -f collecteur`.
-- Tout arrêter : `docker compose down` (ajouter `-v` pour effacer aussi la base).
+Ensuite, le pipeline repasse tout seul toutes les 30 min. Pour voir ce qui se passe :
 
-Les commandes du quotidien (état, réveil d'une source, fréquence) sont dans
-[docs/orchestration.md](docs/orchestration.md).
+| Quoi | Où |
+|---|---|
+| Interface Prefect (historique des passages) | http://localhost:4200 |
+| Journaux (une ligne JSON par source et par passage) | `docker compose logs -f collecteur` |
+| Articles bruts | `articles_bruts/<source>/<id>.json` |
+| Rapport de qualité du jour | `rapports/qualite-AAAA-MM-JJ.md` ([comment le lire](docs/qualite.md)) |
+| Thèmes du jour | `docker compose run --rm collecteur themes-du-jour` |
+| Artefacts des runs de regroupement | `runs/` |
+
+Tout arrêter : `docker compose down` (ajouter `-v` pour effacer aussi la base).
+
+## Ce que fait le pipeline
+
+À chaque passage (toutes les 30 min), orchestré par Prefect ([src/gazette/flows.py](src/gazette/flows.py)) :
+
+- **collecte** : les flux RSS de [sources.csv](sources.csv) sont lus poliment (ETag, backoff), et
+  chaque nouvel article est écrit une seule fois dans `articles_bruts/` ;
+- **nettoyage** : chaque article est normalisé et passe les règles d'exclusion de
+  [regles.toml](regles.toml) (publi, horoscope, programme TV, doublons…), puis va dans la table
+  `articles_propres` ou dans `rejets`, avec la règle qui l'a écarté
+  ([contrat des données](docs/donnees.md)) ;
+- **contrôles** : des contrôles de qualité vérifient les vraies données et alertent l'équipe si un
+  fait est faux ;
+- **rapport** : ce qui a été rejeté, par règle et par source ;
+- **thèmes** (une fois par jour, après 6 h 30) : les articles propres des dernières 24 h sont
+  vectorisés (fastembed), regroupés (HDBSCAN) et nommés par leurs mots-clés. Chaque run est tracé
+  (données, paramètres, métriques, artefacts) : [docs/mlops.md](docs/mlops.md) ;
+- **rétention** : purge selon les durées de conservation.
+
+## Commandes
+
+Toutes passent par `docker compose run --rm collecteur <commande>` :
+
+| Commande | Rôle |
+|---|---|
+| `collecter [--source X]` | un passage de collecte tout de suite |
+| `nettoyer` | brut → `articles_propres` / `rejets`, puis rapport |
+| `rejouer` | repasse les rejets d'une règle modifiée |
+| `controler` | contrôles de qualité et alerte |
+| `rapport` | réécrit le rapport de qualité |
+| `themes` | un run de regroupement tracé |
+| `themes-du-jour` | les thèmes du dernier run réussi |
+| `runs` | les derniers runs |
+| `tracer` | sort, source et item brut d'un article |
+| `etat` | état de chaque source |
+| `reveiller` | sort une source du sommeil |
+| `purger` | applique la rétention |
+| `migrer` | applique les migrations en attente |
+
+`--help` sur chaque commande donne ses options. Le quotidien (réveil d'une source, fréquence) est
+détaillé dans [docs/orchestration.md](docs/orchestration.md).
+
+## Configuration
+
+Les valeurs par défaut suffisent en local. Pour les changer, créer un fichier `.env` à la racine
+(jamais commité) :
+
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `GAZETTE_INTERVALLE_MIN` | `30` | minutes entre deux passages |
+| `GAZETTE_DELAI_MIN` | `10` | délai minimal entre deux requêtes à une même source |
+| `GAZETTE_ALERTE_WEBHOOK` | vide | webhook Discord ou Slack pour les alertes qualité |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `gazette` | identifiants de la base locale |
+
+Le regroupement se règle dans [config/clustering.yaml](config/clustering.yaml) (et
+[config/mots_vides.txt](config/mots_vides.txt)) ; les règles d'exclusion dans
+[regles.toml](regles.toml) ; les flux dans [sources.csv](sources.csv).
 
 ## Tester
 
@@ -68,9 +111,9 @@ Les commandes du quotidien (état, réveil d'une source, fréquence) sont dans
 bin/test
 ```
 
-Lint (ruff) et tests (pytest) dans un conteneur, avec une vraie base PostgreSQL : rien à installer à
-part Docker. Les tests n'utilisent jamais Internet : flux enregistrés dans `tests/fixtures/`, et un
-serveur HTTP local qui joue l'éditeur (503, 404, ETag…). Parmi eux :
+Lint (ruff) et tests (pytest) dans un conteneur, avec une vraie base PostgreSQL (dans un schéma
+jetable, jamais celui de dev). Les tests n'utilisent jamais Internet : flux enregistrés dans
+`tests/fixtures/`, et un serveur HTTP local qui joue l'éditeur (503, 404, ETag…). Parmi eux :
 
 - `test_deux_passages_zero_doublon` : deux passages de suite n'écrivent aucun doublon ;
 - `test_source_en_panne_mise_en_sommeil` : une source qui répond 503 est réessayée avec une
@@ -85,40 +128,44 @@ serveur HTTP local qui joue l'éditeur (503, 404, ETag…). Parmi eux :
 
 ```
 src/gazette/          le code (python -m gazette <commande>)
-  cli.py                commandes : collecter, nettoyer, controler, rapport, tracer, etat…
-  flows.py              orchestration Prefect : collecte → nettoyage → contrôles → rapport
+  cli.py                les commandes ci-dessus
+  flows.py              orchestration Prefect : un passage, ses tâches, la planification
+  pipeline.py           les étapes après la collecte, partagées par la CLI et Prefect
   collecteur.py         un passage : chaque source active, compteurs, mise en sommeil
   fetch.py              requête polie : User-Agent, ETag / Last-Modified, timeouts, backoff
   parser.py             flux RSS / Atom → items bruts
+  sources.py            lecture de sources.csv
   stockage.py           articles_bruts/<source>/<id>.json, sans doublon
   normalisation.py      une fonction pure par transformation (HTML, encodage, dates…)
   regles.py             règles d'exclusion R01…R15 et dédoublonnage
   nettoyage.py          brut → articles_propres / rejets
-  controles.py          contrôles de qualité sur les vraies données, alerte (alertes.py)
+  controles.py          contrôles de qualité, alerte (alertes.py)
   rapport.py            rapport de qualité du jour
   retention.py          purge selon les durées de conservation
   embeddings.py         titre + extrait → vecteur (fastembed), cache en base
   themes.py             regroupement HDBSCAN, nommage, runs tracés
-  db.py                 PostgreSQL : migrations, tables sources, collectes
+  db.py                 PostgreSQL : connexion, migrations
+  config.py, journal.py réglages (environnement) et journaux JSON
   migrations/           migrations SQL versionnées
 tests/                tests pytest et flux enregistrés (fixtures/)
-docs/                 cadrage, veille, données, flux, orchestration, qualité, CI/CD
-infra/                infrastructure as code à venir
+docs/                 cadrage, veille, données, flux, orchestration, qualité, CI/CD, MLOps
+infra/                infrastructure as code (à venir)
 bin/                  dev et test : les deux seules commandes à connaître
+config/               paramètres du regroupement et mots vides
 Dockerfile            multi-étapes : builder → test → runtime (non root)
 docker-compose.yml    PostgreSQL, Prefect, pipeline planifié, tests
 sources.csv           les 9 flux retenus
 regles.toml           motifs et seuils des règles d'exclusion
-config/               paramètres du regroupement (clustering.yaml) et mots vides
 ```
+
+Créés au premier lancement (hors dépôt) : `articles_bruts/`, `rapports/`, `modeles/`, `runs/`.
 
 ## Intégration continue
 
 Chaque push sur `main` lance [la CI](.github/workflows/ci.yml) : lint → tests → build de l'image
-→ publication sur `ghcr.io/ethannoe/projet_la_gazette:<AAAAMMJJHHMMSS>-<sha>`. Sur une pull request,
-les mêmes étapes tournent, mais l'image n'est pas publiée. La stratégie est détaillée dans
-[docs/ci-cd.md](docs/ci-cd.md).
+→ publication sur `ghcr.io/<propriétaire>/<dépôt>:<AAAAMMJJHHMMSS>-<sha>`. Sur une pull request,
+les mêmes étapes tournent, mais l'image n'est pas publiée. La stratégie : [docs/ci-cd.md](docs/ci-cd.md).
 
 ## Contribuer
 
-Branches, format des commits, revue, qui merge : voir [CONTRIBUTING.md](CONTRIBUTING.md).
+Branches, format des commits, revue, qui merge : [CONTRIBUTING.md](CONTRIBUTING.md).
