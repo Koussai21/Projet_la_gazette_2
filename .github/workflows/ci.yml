@@ -74,6 +74,15 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install .
+      - name: Préparer le jeu de données d'évaluation
+        run: |
+          python -m gazette migrer
+          python -m gazette collecter
+          python -m gazette nettoyer
+      - name: Évaluer le candidat
+        run: |
+          VERSION="v-${GITHUB_SHA::7}"
+          python -m gazette modele-evaluer-ci --version "$VERSION" --par "${{ github.actor }}"
       - name: Évaluer le candidat sur les données de référence
         run: |
           VERSION="v-${GITHUB_SHA::7}"
