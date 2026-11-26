@@ -10,9 +10,8 @@ import psycopg
 
 from gazette import controles, db, nettoyage, rapport, registre, regles, retention, themes
 from gazette.config import Config
-from gazette.sources import load_sources
-
 from gazette.embeddings import EncodeurFastembed
+from gazette.sources import load_sources
 
 
 def nettoyer(conn: psycopg.Connection, cfg: Config) -> nettoyage.BilanNettoyage:
