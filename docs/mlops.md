@@ -188,5 +188,19 @@ venaient tous du cache : il a pris 0,2 s. C'est ce run que montre la vue `themes
 | 23 | Nationalistes · Religieux · Sécuritaires | 3 | 2 | cisjordanie, israéliens, israël |
 | 24 | Championne · Monde · Athlétisme | 3 | 2 | jepchirchir, marathon, suspendue |
 
+## Circuit de promotion CI/CD et Retour arrière
 
+### 1. Registre de versions (`versions_modele`)
+- `candidat` : Configuration évaluée avec succès par la CI sur les données de référence.
+- `production` : Version unique lue au démarrage par `pipeline.regrouper()`.
+- `archive` : Ancienne version de production conservée pour un retour arrière immédiat.
+- `rejete` : Version ayant échoué aux garde-fous de `config/evaluation.yaml`.
 
+### 2. Promotion par la CI
+1. Modification de `config/clustering.yaml` sur une branche et ouverture d'une Pull Request.
+2. Le job `evaluation-modele` lance `python -m gazette modele-evaluer-ci` : si le verdict est `recale`, le pipeline CI échoue et bloque le merge.
+3. Au merge sur `main`, la CI exécute `python -m gazette modele-promouvoir` pour basculer la version en `production`.
+
+### 3. Retour arrière (Rollback)
+```bash
+python -m gazette modele-rollback

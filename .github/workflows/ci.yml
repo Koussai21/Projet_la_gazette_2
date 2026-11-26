@@ -50,6 +50,41 @@ jobs:
       - run: pip install ".[dev]"
       - run: pytest
 
+  evaluation-modele:
+    needs: test
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: gazette
+          POSTGRES_USER: gazette
+          POSTGRES_PASSWORD: gazette
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U gazette -d gazette"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://gazette:gazette@localhost:5432/gazette
+      GAZETTE_MODELES_DIR: /tmp/modeles
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install .
+      - name: Évaluer le candidat sur les données de référence
+        run: |
+          VERSION="v-${GITHUB_SHA::7}"
+          python -m gazette modele-evaluer-ci --version "$VERSION" --par "${{ github.actor }}"
+      - name: Promouvoir en production (merge sur main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          VERSION="v-${GITHUB_SHA::7}"
+          python -m gazette modele-promouvoir "$VERSION" --par "github-actions"
+
   image:
     needs: test
     runs-on: ubuntu-latest

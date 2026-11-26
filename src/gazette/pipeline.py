@@ -13,6 +13,7 @@ from gazette.config import Config
 from gazette.embeddings import EncodeurFastembed
 from gazette.sources import load_sources
 
+from gazette import registre
 
 def nettoyer(conn: psycopg.Connection, cfg: Config) -> nettoyage.BilanNettoyage:
     return nettoyage.nettoyer(conn, cfg.articles_dir, regles.charger(cfg.regles_file))
@@ -40,28 +41,35 @@ def retenir(conn: psycopg.Connection, cfg: Config) -> dict[str, int]:
 
 
 def regrouper(
-    conn: psycopg.Connection,
-    cfg: Config,
+    conn,
+    cfg,
     *,
     declencheur: str = "manuel",
-    fin: datetime | None = None,
-) -> themes.Run | None:
-    """Un run de regroupement tracé. Lancé par le pipeline, il ne tourne qu'une fois par jour."""
-    config_themes = themes.charger_config(cfg.clustering_file)
-    if declencheur == "pipeline" and not themes.run_du_jour_attendu(
-        conn, config_themes, datetime.now(UTC)
-    ):
-        return None
-    encodeur = EncodeurFastembed(config_themes["embeddings"]["modele"], cfg.modeles_dir)
+    fin=None,
+    cfg_override: themes.ConfigThemes | None = None,
+    version_override: str | None = None,
+    mode_candidat: bool = False,
+):
+    db.migrate(conn)
+    registre.initialiser_si_vide(conn)
+
+    if cfg_override is not None:
+        version = version_override or "candidat-local"
+        cfg_themes = cfg_override
+    else:
+        version, cfg_themes = registre.version_en_service(conn)
+
+    encodeur = themes.Encodeur(cfg.modele_embeddings, cfg.modeles_dir)
     return themes.executer(
         conn,
-        config_themes,
+        cfg_themes,
         encodeur,
         fin=fin,
         declencheur=declencheur,
         runs_dir=cfg.runs_dir,
         code_version=cfg.code_version,
-        racine=Path(cfg.clustering_file).resolve().parents[1],
+        version_modele=version,
+        mode_candidat=mode_candidat,
     )
 
 

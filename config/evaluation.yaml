@@ -1,0 +1,15 @@
+seuils:
+  silhouette_min: 0.12
+  part_bruit_max: 0.45
+  nb_themes_min: 3
+  nb_themes_max: 25
+  part_theme_geant_max: 0.40
+
+derive:
+  jours_consecutifs: 2
+  variation_bruit_max: 0.20
+  fenetre_historique_runs: 7
+
+relecture:
+  taille_echantillon: 10
+  taux_validation_min: 0.70

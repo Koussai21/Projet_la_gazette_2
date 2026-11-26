@@ -21,12 +21,15 @@ import numpy as np
 import psycopg
 import yaml
 from psycopg.types.json import Jsonb
+
 from sklearn.cluster import HDBSCAN
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import silhouette_score
 
 from gazette import db
 from gazette.embeddings import Encodeur, texte, vectoriser
+
+from gazette.evaluation import charger_config_eval, evaluer_run, runs_precedents
 
 log = logging.getLogger("gazette.themes")
 
@@ -59,7 +62,8 @@ class Run:
     metriques: dict = field(default_factory=dict)
     themes: list[dict] = field(default_factory=list)  # numero, nom, mots_cles, taille, titres
     artefacts: dict = field(default_factory=dict)
-
+    verdict: str = "valide"
+    raisons_verdict: list[str] = field(default_factory=list)
 
 # --- les étapes, chacune testable seule -------------------------------------------------
 
@@ -188,7 +192,20 @@ def executer(
     runs_dir: str | Path = "runs",
     code_version: str = "inconnue",
     racine: str | Path = ".",
+    version_modele: str = "inconnue",
+    eval_config_path: str | Path = "config/evaluation.yaml"
 ) -> Run:
+
+    run.metriques = metriques(vecteurs, etiquettes) | {
+            "embeddings_calcules": calcules,
+            "duree_s": round(time.monotonic() - t0, 2),
+        }
+    cfg_eval = charger_config_eval(Path(racine) / eval_config_path)
+    hist = runs_precedents(conn, limite=cfg_eval["derive"]["fenetre_historique_runs"])
+    eval_res = evaluer_run(run.metriques, cfg_eval, hist)
+    run.verdict = eval_res.verdict
+    run.raisons_verdict = eval_res.raisons
+    
     db.migrate(conn)
     debut = datetime.now(UTC)
     fin = fin or debut.replace(microsecond=0)
@@ -236,7 +253,16 @@ def executer(
             for a, e, p in zip(articles, etiquettes, probabilites, strict=True)
         }
         run.artefacts = _ecrire_artefacts(Path(runs_dir) / run.run_id, cfg, run, affectations)
-        _enregistrer(conn, run, articles, etiquettes, probabilites)
+        ecrire_themes = (run.verdict != "recale") and (not mode_candidat)
+        _enregistrer(
+            conn,
+            run,
+            articles,
+            etiquettes,
+            probabilites,
+            version_modele=version_modele,
+            ecrire_themes=ecrire_themes,
+        )
     except Exception as exc:
         conn.execute(
             "UPDATE runs SET statut = 'echec', erreur = %s, duree_s = %s WHERE run_id = %s",
