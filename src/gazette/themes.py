@@ -30,7 +30,6 @@ from gazette import db
 from gazette.embeddings import Encodeur, texte, vectoriser
 from gazette.evaluation import charger_config_eval, evaluer_run, runs_precedents
 
-
 log = logging.getLogger("gazette.themes")
 
 MOTIF_MOT = r"(?u)\b[^\W\d_][^\W\d_'’-]{2,}\b"  # au moins 3 lettres, sans chiffres
