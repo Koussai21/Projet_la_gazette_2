@@ -12,6 +12,8 @@ from gazette import controles, db, nettoyage, rapport, registre, regles, retenti
 from gazette.config import Config
 from gazette.sources import load_sources
 
+from gazette.embeddings import EncodeurFastembed
+
 
 def nettoyer(conn: psycopg.Connection, cfg: Config) -> nettoyage.BilanNettoyage:
     return nettoyage.nettoyer(conn, cfg.articles_dir, regles.charger(cfg.regles_file))
@@ -57,7 +59,7 @@ def regrouper(
     else:
         version, cfg_themes = registre.version_en_service(conn)
 
-    encodeur = themes.Encodeur(cfg.modele_embeddings, cfg.modeles_dir)
+    encodeur = EncodeurFastembed(cfg_themes["embeddings"]["modele"], cfg.modeles_dir)
     return themes.executer(
         conn,
         cfg_themes,
