@@ -24,10 +24,12 @@ from psycopg.types.json import Jsonb
 from sklearn.cluster import HDBSCAN
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import silhouette_score
+from sklearn.decomposition import PCA
 
 from gazette import db
 from gazette.embeddings import Encodeur, texte, vectoriser
 from gazette.evaluation import charger_config_eval, evaluer_run, runs_precedents
+
 
 log = logging.getLogger("gazette.themes")
 
@@ -89,12 +91,20 @@ def regrouper(vecteurs: np.ndarray, params: dict) -> tuple[np.ndarray, np.ndarra
     n = len(vecteurs)
     if n < max(params["min_cluster_size"], params["min_samples"] + 1, 2):
         return np.full(n, -1), np.zeros(n)
-    normes = np.linalg.norm(vecteurs, axis=1, keepdims=True)
-    unitaires = vecteurs / np.where(normes == 0, 1, normes)  # euclidien ≈ cosinus
+
+    donnees = vecteurs
+    n_comp = params.get("pca_composantes")
+    if n_comp and n > n_comp + 5 and vecteurs.shape[1] > n_comp:
+        donnees = PCA(n_components=int(n_comp), random_state=42).fit_transform(donnees)
+
+    normes = np.linalg.norm(donnees, axis=1, keepdims=True)
+    unitaires = donnees / np.where(normes == 0, 1, normes)  # euclidien ≈ cosinus
+
     modele = HDBSCAN(
         min_cluster_size=params["min_cluster_size"],
         min_samples=params["min_samples"],
         cluster_selection_method=params["cluster_selection_method"],
+        cluster_selection_epsilon=float(params.get("cluster_selection_epsilon", 0.0)),
         copy=True,
     ).fit(unitaires)
     return _renumeroter(modele.labels_), modele.probabilities_
